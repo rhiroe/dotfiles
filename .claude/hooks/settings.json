@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/check_cost_budget.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
