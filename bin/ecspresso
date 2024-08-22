@@ -13,6 +13,7 @@ do
       ARGS="$ARGS $1"
       ;;
   esac
+  shift
 done
 
 if [ -z $ENVFILE ]; then
