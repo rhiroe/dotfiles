@@ -1,3 +1,22 @@
 #!/usr/bin/env zsh
 
-docker run --rm -it -v ${LOCAL_HOME}/.aws:/root/.aws ecspresso $@
+while (( $# > 0 ))
+do
+  case $1 in
+    --envfile=*)
+      ENVFILE_NAME=$(echo $1 | sed -e 's/^--envfile=//')
+      CALL_DIR=$(cd $(ps $PPID | tail -n 1 | awk '{print $6}' | xargs dirname) && pwd)
+      ENVFILE=$(echo "$CALL_DIR/$ENVFILE_NAME" | sed s@$WORKDIR@$LOCAL_WORKSPACE@)
+      ARGS="$ARGS --envfile=$ENVFILE_NAME"
+      ;;
+    *)
+      ARGS="$ARGS $1"
+      ;;
+  esac
+done
+
+if [ -z $ENVFILE ]; then
+  docker run --rm -it -v ${LOCAL_HOME}/.aws:/root/.aws ecspresso $ARGS
+else
+  docker run --rm -it -v ${LOCAL_HOME}/.aws:/root/.aws -v ${ENVFILE}:${ENVFILE_NAME} ecspresso $ARGS
+fi
