@@ -17,7 +17,7 @@ do
 done
 
 if [ -z $ENVFILE ]; then
-  docker run --rm -it -v ${LOCAL_HOME}/.aws:/root/.aws ecspresso $ARGS
+  docker run --rm -it -v ${LOCAL_HOME}/.aws:/root/.aws ecspresso $(echo $ARGS)
 else
-  docker run --rm -it -v ${LOCAL_HOME}/.aws:/root/.aws -v ${ENVFILE}:${ENVFILE_NAME} ecspresso $ARGS
+  docker run --rm -it -v ${LOCAL_HOME}/.aws:/root/.aws -v ${ENVFILE}:${ENVFILE_NAME} ecspresso $(echo $ARGS)
 fi
