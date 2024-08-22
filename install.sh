@@ -6,5 +6,5 @@ docker build --pull --secret id=aws_config,src=${LOCAL_HOME}/.aws/config --secre
 docker build --pull -f ~/dotfiles/yq.dockerfile -t yq .
 
 cat <<EOF >> ~/.zshrc
-export PATH=$PATH:$HOME/dotfiles/bin/ecspresso:$HOME/dotfiles/bin/jq:$HOME/dotfiles/bin/saml2aws:$HOME/dotfiles/bin/yq
+export PATH=$PATH:$HOME/dotfiles/bin
 EOF
