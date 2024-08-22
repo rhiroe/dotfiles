@@ -5,7 +5,7 @@ do
   case $1 in
     --envfile=*)
       ENVFILE_NAME=$(echo $1 | sed -e 's/^--envfile=//')
-      CALL_DIR=$(cd $(ps $PPID | tail -n 1 | awk '{print $6}' | xargs dirname) && pwd)
+      CALL_DIR=$(cd $(dirname -- $(ps $PPID | tail -n 1 | awk '{print $6}')) && pwd)
       ENVFILE=$(echo "$CALL_DIR/$ENVFILE_NAME" | sed s@$WORKDIR@$LOCAL_WORKSPACE@)
       ARGS="$ARGS --envfile=$ENVFILE_NAME"
       ;;
