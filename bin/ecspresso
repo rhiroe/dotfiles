@@ -6,7 +6,7 @@ do
     --envfile=*)
       ENVFILE=$(echo $1 | sed -e 's/^--envfile=//')
       ENVFILE_NAME=$(basename $ENVFILE)
-      LOCAL_ENVFILE=$(echo $(cd $(pwd) $ENVFILE && pwd) | sed s@$WORKDIR@$LOCAL_WORKSPACE@)
+      LOCAL_ENVFILE=$(echo $(cd $(pwd) && cd $ENVFILE && pwd) | sed s@$WORKDIR@$LOCAL_WORKSPACE@)
       ARGS="$ARGS --envfile='$ENVFILE_NAME'"
       ;;
     *)
