@@ -4,9 +4,10 @@ while (( $# > 0 ))
 do
   case $1 in
     --envfile=*)
-      ENVFILE_NAME=$(echo $1 | sed -e 's/^--envfile=//')
+      ENVFILE=$(echo $1 | sed -e 's/^--envfile=//')
+      ENVFILE_NAME=$(basename $ENVFILE)
       CALL_DIR=$(cd $(dirname -- $(ps $PPID | tail -n 1 | awk '{print $6}')) && pwd)
-      ENVFILE=$(echo "$CALL_DIR/$ENVFILE_NAME" | sed s@$WORKDIR@$LOCAL_WORKSPACE@)
+      LOCAL_ENVFILE=$(echo $(cd $CALL_DIR && cd $ENVFILE && pwd) | sed s@$WORKDIR@$LOCAL_WORKSPACE@)
       ARGS="$ARGS --envfile=$ENVFILE_NAME"
       ;;
     *)
@@ -16,8 +17,8 @@ do
   shift
 done
 
-if [ -z $ENVFILE ]; then
+if [ -z $LOCAL_ENVFILE ]; then
   docker run --rm -it -v ${LOCAL_HOME}/.aws:/root/.aws ecspresso $(echo $ARGS)
 else
-  docker run --rm -it -v ${LOCAL_HOME}/.aws:/root/.aws -v ${ENVFILE}:${ENVFILE_NAME} ecspresso $(echo $ARGS)
+  docker run --rm -it -v ${LOCAL_HOME}/.aws:/root/.aws -v ${LOCAL_ENVFILE}:${ENVFILE_NAME} ecspresso $(echo $ARGS)
 fi
