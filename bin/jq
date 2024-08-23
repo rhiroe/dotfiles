@@ -1,3 +1,0 @@
-#!/usr/bin/env zsh
-
-docker run --rm -it -v jq $@

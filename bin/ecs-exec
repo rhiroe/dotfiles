@@ -1,0 +1,21 @@
+#!/usr/bin/env zsh
+
+while (( $# > 0 ))
+do
+  case $1 in
+    -e)
+      shift
+      ENVIRONMENT=$1
+      ;;
+    *)
+      ECS_COMMAND=$(echo "$ECS_COMMAND $1")
+      ;;
+  esac
+  shift
+done
+
+ECS_EXEC_FILE=$(echo ${ECS_EXEC_FILES:?} | grep $ENVIRONMENT | head -n 1 | sed s@$WORKDIR/@@)
+echo $ECS_EXEC_FILE
+ECSPRESSO_DIR=$(echo ${ECS_EXEC_FILE:?} | awk -F/ '{print $1}')
+
+docker run -it -v ${LOCAL_HOME}/.aws:/root/.aws -v $LOCAL_WORKSPACE/$ECSPRESSO_DIR:/aws/$ECSPRESSO_DIR --entrypoint bash -e ECS_COMMAND="$ECS_COMMAND" ecspresso $ECS_EXEC_FILE
