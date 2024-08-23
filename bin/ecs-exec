@@ -14,7 +14,7 @@ do
   shift
 done
 
-ECS_EXEC_FILE=$(echo ${ECS_EXEC_FILES:?} | grep $ENVIRONMENT | head -n 1 | sed s@$WORKDIR/@@)
+ECS_EXEC_FILE=$(echo ${ECS_EXEC_FILES:?} | grep ${ENVIRONMENT:-stg} | head -n 1 | sed s@$WORKDIR/@@)
 echo $ECS_EXEC_FILE
 ECSPRESSO_DIR=$(echo ${ECS_EXEC_FILE:?} | awk -F/ '{print $1}')
 
