@@ -15,7 +15,6 @@ do
 done
 
 ECS_EXEC_FILE=$(echo ${ECS_EXEC_FILES:?} | grep ${ENVIRONMENT:-stg} | head -n 1 | sed s@$WORKDIR/@@)
-echo $ECS_EXEC_FILE
 ECSPRESSO_DIR=$(echo ${ECS_EXEC_FILE:?} | awk -F/ '{print $1}')
 
-docker run -it -v ${LOCAL_HOME}/.aws:/root/.aws -v $LOCAL_WORKSPACE/$ECSPRESSO_DIR:/aws/$ECSPRESSO_DIR --entrypoint bash -e ECS_COMMAND="$ECS_COMMAND" ecspresso ${ECS_EXEC_FILE:-rails console}
+docker run -it -v ${LOCAL_HOME}/.aws:/root/.aws -v $LOCAL_WORKSPACE/$ECSPRESSO_DIR:/aws/$ECSPRESSO_DIR -e ECS_COMMAND="$ECS_COMMAND" ecspresso ${ECS_EXEC_FILE:?}

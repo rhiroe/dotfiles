@@ -27,4 +27,4 @@ COPY --from=build /usr/src/build/jq /usr/local/bin/jq
 COPY --from=build /usr/src/build/yq /usr/local/bin/yq
 COPY --from=build /usr/local/bin/session-manager-plugin /usr/local/bin/session-manager-plugin
 
-ENTRYPOINT []
+ENTRYPOINT ["bash"]
