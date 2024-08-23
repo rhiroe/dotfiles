@@ -6,6 +6,5 @@ docker build --pull --secret id=aws_config,src=${LOCAL_HOME}/.aws/config --secre
 docker build --pull -f ~/dotfiles/yq.dockerfile -t yq .
 
 cat <<EOF >> ~/.zshrc
-export WORKDIR=$(pwd)
 export PATH=$PATH:$HOME/dotfiles/bin
 EOF
