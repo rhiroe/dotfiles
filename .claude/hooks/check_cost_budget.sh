@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # PreToolUse hook: セッションの推定コスト(USD)が CLAUDE_COST_BUDGET_USD の倍数を
-# 超えるたびに、ツール呼び出しを一度だけ deny してユーザーに知らせる。
+# 超えるたびに、ユーザーにポップアップ通知する。
 # 目的は「1セッションが暴走して大量にトークン/コストを溶かす」ケースの早期検知。
-# 非対話(Auto Mode/VSCode拡張等)では "ask" が自動的に deny 扱いになった上で
-# ユーザーへの通知が出ないため、明示的に "deny" を返す。
+# 対話モードのときだけ ask でセッションを中断して確認を求め、それ以外は通知のみで
+# 処理を継続する("ask" は応答者がいない非対話モードでは自動的に deny 扱いになり、
+# ユーザーが気づけないため)。
 #
 # 単価はモデルごとに大きく異なる(例: Opusはoutputトークン単価がHaikuの数十倍)ため、
 # トークン数の単純合算ではなく概算コストで閾値判定する。
@@ -20,6 +21,20 @@ THRESHOLD_USD="${CLAUDE_COST_BUDGET_USD:-3}"
 STATE_DIR="$HOME/.claude/hooks/state"
 mkdir -p "$STATE_DIR"
 
+notify_user() {
+  local title="$1"
+  local msg="$2"
+  if command -v osascript >/dev/null 2>&1; then
+    osascript -e "display notification \"${msg//\"/\\\"}\" with title \"${title//\"/\\\"}\"" >/dev/null 2>&1 || true
+    return 0
+  fi
+  if command -v terminal-notifier >/dev/null 2>&1; then
+    terminal-notifier -title "$title" -message "$msg" >/dev/null 2>&1 || true
+    return 0
+  fi
+  echo "$(date +"%Y-%m-%dT%H:%M:%S%z") NOTIFY title=${title} message=${msg}" >> "$STATE_DIR/notify.log" 2>/dev/null || true
+}
+
 INPUT=$(cat)
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
@@ -28,7 +43,6 @@ if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ] || [ -z "$SESSION_ID
   exit 0
 fi
 
-# 古い状態ファイルを掃除(2日以上前のもの)
 find "$STATE_DIR" -type f -mtime +2 -delete 2>/dev/null || true
 
 # 概算単価表(USD / 1Mトークン)。モデルIDの部分一致で判定する。日付サフィックス付き
@@ -74,20 +88,23 @@ if [ "$LEVEL" -lt 1 ]; then
   exit 0
 fi
 
-STATE_FILE="$STATE_DIR/${SESSION_ID}.level"
-LAST_LEVEL=0
-if [ -f "$STATE_FILE" ]; then
-  LAST_LEVEL=$(cat "$STATE_FILE")
-fi
+# default/plan/acceptEdits は対話モード、auto/dontAsk/bypassPermissions は応答者がいない非対話モード。
+PERMISSION_MODE=$(echo "$INPUT" | jq -r '.permission_mode // "default"')
+case "$PERMISSION_MODE" in
+  auto|dontAsk|bypassPermissions) IS_INTERACTIVE="false" ;;
+  *) IS_INTERACTIVE="true" ;;
+esac
 
-if [ "$LEVEL" -gt "$LAST_LEVEL" ]; then
-  echo "$LEVEL" > "$STATE_FILE"
+SH_REASON="このセッションの推定コストが \$${THRESHOLD_USD} の倍数(現在: 約\$${TOTAL}、${LEVEL}倍)に達しました。セッションのクリアを推奨します。"
+notify_user "CLAUDE: コスト警告" "$SH_REASON"
+
+if [ "$IS_INTERACTIVE" = "true" ]; then
   jq -n \
-    --arg reason "このセッションの推定コストが \$${THRESHOLD_USD} の倍数(現在: 約\$${TOTAL}、${LEVEL}倍)に達したため、このツール呼び出しをブロックしました。セッションのクリアを検討してください。" \
+    --arg reason "$SH_REASON" \
     '{
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
-        permissionDecision: "deny",
+        permissionDecision: "ask",
         permissionDecisionReason: $reason
       }
     }'
