@@ -37,6 +37,7 @@ notify_user() {
 INPUT=$(cat)
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 
 if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ] || [ -z "$SESSION_ID" ]; then
   exit 0
@@ -85,8 +86,15 @@ case "$PERMISSION_MODE" in
   *) IS_INTERACTIVE="true" ;;
 esac
 
-SH_REASON="このセッションの消費トークン数が ${THRESHOLD_TOKENS} トークン(Opus換算で約\$3相当)の倍数(現在: ${TOTAL}トークン、${LEVEL}倍)に達しました。セッションのクリアを推奨します。"
-notify_user "CLAUDE: トークン消費警告" "$SH_REASON"
+# Claude Codeにはセッション名/タイトルが存在しないため、cwdのプロジェクト名と
+# session_idの先頭8文字で、どのセッションかを見分けられるようにする。
+SESSION_LABEL="${SESSION_ID:0:8}"
+if [ -n "$CWD" ]; then
+  SESSION_LABEL="$(basename "$CWD") [${SESSION_LABEL}]"
+fi
+
+SH_REASON="[${SESSION_LABEL}] このセッションの消費トークン数が ${THRESHOLD_TOKENS} トークン(Opus換算で約\$3相当)の倍数(現在: ${TOTAL}トークン、${LEVEL}倍)に達しました。セッションのクリアを推奨します。"
+notify_user "CLAUDE: トークン消費警告 (${SESSION_LABEL})" "$SH_REASON"
 
 if [ "$IS_INTERACTIVE" = "true" ]; then
   jq -n \
