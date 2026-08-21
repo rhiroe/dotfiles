@@ -11,6 +11,9 @@ chmod +x ~/.claude/hooks/check_cost_budget.sh
 MERGED=$(jq -s '.[0] * .[1]' ~/.claude/settings.json "$DOTFILES_DIR/.claude/hooks/settings.json")
 echo "$MERGED" > ~/.claude/settings.json
 
-IMPORT_LINE="@$DOTFILES_DIR/.claude/CLAUDE_IMPORT.md"
+cp "$DOTFILES_DIR/.claude/CLAUDE_IMPORT.md" ~/.claude/CLAUDE_IMPORT.md
+
+IMPORT_LINE="@$HOME/.claude/CLAUDE_IMPORT.md"
 touch ~/CLAUDE.md
+sed -i '' '\#^@.*/\.claude/CLAUDE_IMPORT\.md$#d' ~/CLAUDE.md
 grep -qxF "$IMPORT_LINE" ~/CLAUDE.md || echo "$IMPORT_LINE" >> ~/CLAUDE.md
