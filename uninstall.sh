@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-rm -f ~/.claude/hooks/check_cost_budget.sh
+rm -f ~/.claude/hooks/check_token_budget.sh
 rmdir ~/.claude/hooks 2>/dev/null || true
 
 if [ -f ~/.claude/settings.json ]; then

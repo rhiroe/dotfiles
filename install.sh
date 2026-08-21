@@ -4,8 +4,8 @@ set -euo pipefail
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 mkdir -p ~/.claude/hooks
-cp "$DOTFILES_DIR/.claude/hooks/check_cost_budget.sh" ~/.claude/hooks/check_cost_budget.sh
-chmod +x ~/.claude/hooks/check_cost_budget.sh
+cp "$DOTFILES_DIR/.claude/hooks/check_token_budget.sh" ~/.claude/hooks/check_token_budget.sh
+chmod +x ~/.claude/hooks/check_token_budget.sh
 
 [ -f ~/.claude/settings.json ] || echo '{}' > ~/.claude/settings.json
 MERGED=$(jq -s '.[0] * .[1]' ~/.claude/settings.json "$DOTFILES_DIR/.claude/hooks/settings.json")

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/check_cost_budget.sh",
+            "command": "~/.claude/hooks/check_token_budget.sh",
             "timeout": 10
           }
         ]

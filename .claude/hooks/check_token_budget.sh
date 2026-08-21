@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# PreToolUse hook: セッションの消費トークン数が CLAUDE_COST_BUDGET_TOKENS の倍数を
+# PreToolUse hook: セッションの消費トークン数が CLAUDE_TOKEN_BUDGET の倍数を
 # 超えるたびに、ユーザーにポップアップ通知する。
-# 目的は「1セッションが暴走して大量にトークン/コストを溶かす」ケースの早期検知。
+# 目的は「1セッションが暴走して大量にトークンを溶かす」ケースの早期検知。
 # 対話モードのときだけ ask でセッションを中断して確認を求め、それ以外は通知のみで
 # 処理を継続する("ask" は応答者がいない非対話モードでは自動的に deny 扱いになり、
 # ユーザーが気づけないため)。
@@ -16,7 +16,7 @@
 #   transcript には記録されないため、この集計には含まれない。
 set -euo pipefail
 
-THRESHOLD_TOKENS="${CLAUDE_COST_BUDGET_TOKENS:-200000}"
+THRESHOLD_TOKENS="${CLAUDE_TOKEN_BUDGET:-200000}"
 STATE_DIR="$HOME/.claude/hooks/state"
 mkdir -p "$STATE_DIR"
 
@@ -86,7 +86,7 @@ case "$PERMISSION_MODE" in
 esac
 
 SH_REASON="このセッションの消費トークン数が ${THRESHOLD_TOKENS} トークン(Opus換算で約\$3相当)の倍数(現在: ${TOTAL}トークン、${LEVEL}倍)に達しました。セッションのクリアを推奨します。"
-notify_user "CLAUDE: コスト警告" "$SH_REASON"
+notify_user "CLAUDE: トークン消費警告" "$SH_REASON"
 
 if [ "$IS_INTERACTIVE" = "true" ]; then
   jq -n \
