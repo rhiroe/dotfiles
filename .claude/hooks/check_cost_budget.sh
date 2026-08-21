@@ -65,6 +65,19 @@ if [ "$LEVEL" -lt 1 ]; then
   exit 0
 fi
 
+# セッションごとに直近で通知したレベルを記録し、レベルが進んだときだけ通知する。
+STATE_FILE="$STATE_DIR/${SESSION_ID}.level"
+LAST_NOTIFIED_LEVEL=0
+if [ -f "$STATE_FILE" ]; then
+  LAST_NOTIFIED_LEVEL=$(cat "$STATE_FILE" 2>/dev/null || echo 0)
+  case "$LAST_NOTIFIED_LEVEL" in ''|*[!0-9]*) LAST_NOTIFIED_LEVEL=0 ;; esac
+fi
+
+if [ "$LEVEL" -le "$LAST_NOTIFIED_LEVEL" ]; then
+  exit 0
+fi
+echo "$LEVEL" > "$STATE_FILE"
+
 # default/plan/acceptEdits は対話モード、auto/dontAsk/bypassPermissions は応答者がいない非対話モード。
 PERMISSION_MODE=$(echo "$INPUT" | jq -r '.permission_mode // "default"')
 case "$PERMISSION_MODE" in
