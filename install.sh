@@ -4,7 +4,7 @@ set -euo pipefail
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 mkdir -p ~/.claude/hooks
-cp "$DOTFILES_DIR/.claude/hooks" ~/.claude/hooks
+cp -r "$DOTFILES_DIR/.claude/hooks/." ~/.claude/hooks
 find ~/.claude/hooks -type f -exec chmod +x {} +
 
 [ -f ~/.claude/settings.json ] || echo '{}' > ~/.claude/settings.json
