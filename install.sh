@@ -8,7 +8,17 @@ cp -r "$DOTFILES_DIR/.claude/hooks/." ~/.claude/hooks
 find ~/.claude/hooks -type f -exec chmod +x {} +
 
 [ -f ~/.claude/settings.json ] || echo '{}' > ~/.claude/settings.json
-MERGED=$(jq -s '.[0] * .[1]' ~/.claude/settings.json "$DOTFILES_DIR/.claude/settings.json")
+
+# json_toplevel.awkは2スペースインデントの整形済みJSONしか扱えないため、
+# 想定外フォーマット(ミニファイ済み等)なら壊さず中断する。
+FIRST_LINE=$(grep -m1 -v '^[[:space:]]*$' ~/.claude/settings.json | tr -d ' \t\r\n')
+LAST_LINE=$(grep -v '^[[:space:]]*$' ~/.claude/settings.json | tail -1 | tr -d ' \t\r\n')
+if [ "$FIRST_LINE" != "{}" ] && { [ "$FIRST_LINE" != "{" ] || [ "$LAST_LINE" != "}" ]; }; then
+  echo "~/.claude/settings.json が2スペースインデントの整形済みJSONではないため、自動マージを中断しました。手動でマージしてください。" >&2
+  exit 1
+fi
+
+MERGED=$(awk -v MODE=merge -f "$DOTFILES_DIR/.claude/scripts/json_toplevel.awk" ~/.claude/settings.json "$DOTFILES_DIR/.claude/settings.json")
 echo "$MERGED" > ~/.claude/settings.json
 
 cp "$DOTFILES_DIR/.claude/CLAUDE_IMPORT.md" ~/.claude/CLAUDE_IMPORT.md
