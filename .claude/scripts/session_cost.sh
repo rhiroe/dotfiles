@@ -8,9 +8,10 @@
 #   session_cost.sh                     # カレントディレクトリの最新セッションの詳細
 #   session_cost.sh <session_id>        # セッションIDを指定して詳細表示
 #   session_cost.sh <transcript.jsonl>  # transcriptパスを直接指定して詳細表示
-#   session_cost.sh --report [--days N] [--project SUBSTR] [session_id]
+#   session_cost.sh --report [--days N] [--project SUBSTR]
 #                                        # 全セッション横断でトークン量/品質代理指標を一覧表示
-#                                        # session_idを指定するとそのセッションのみ(期間制限なし)
+#   session_cost.sh --report <session_id>
+#                                        # そのセッションのみ詳細表示(期間制限なし)
 #
 # 品質を直接示すラベルはtranscriptに存在しないため、以下を代理指標として使う:
 #   - bash_error_rate: Bashツールがエラー/非ゼロ終了で終わった割合
@@ -162,6 +163,76 @@ run_single() {
   ' "$transcript_path"
 }
 
+print_session_detail() {
+  local transcript_path="$1"
+  local session_id project_name
+  session_id=$(basename "$transcript_path" .jsonl)
+  project_name=$(basename "$(dirname "$transcript_path")")
+
+  awk -v session_id="$session_id" -v project_name="$project_name" "$AWK_COMMON"'
+  {
+    if (cwd == "") { cwd = extract_str($0, "cwd") }
+    if (branch == "") { branch = extract_str($0, "gitBranch") }
+    ts = extract_str($0, "timestamp")
+    if (ts != "") {
+      if (first_ts == "" || ts < first_ts) first_ts = ts
+      if (ts > last_ts) last_ts = ts
+    }
+    if (index($0, "\"type\":\"ai-title\"") > 0) {
+      t = extract_str($0, "aiTitle")
+      if (t != "") title = t
+    }
+    if (index($0, "\"type\":\"assistant\"") > 0) {
+      model = ""
+      if (match($0, /"model":"[^"]*"/)) {
+        model = substr($0, RSTART, RLENGTH)
+        sub(/^"model":"/, "", model)
+        sub(/"$/, "", model)
+      }
+      if (model != "") {
+        usage = extract_blob($0, "usage")
+        if (usage != "") {
+          turns[model]++
+          sum_in[model]  += extract_num(usage, "input_tokens")
+          sum_out[model] += extract_num(usage, "output_tokens")
+          sum_cw[model]  += cache_write_tokens(usage)
+          sum_cr[model]  += extract_num(usage, "cache_read_input_tokens")
+        }
+      }
+    } else if (index($0, "\"type\":\"user\"") > 0 && index($0, "\"toolUseResult\":{") > 0) {
+      tr = extract_blob($0, "toolUseResult")
+      if (index(tr, "\"stdout\"") > 0 || index(tr, "\"stderr\"") > 0) {
+        bash_total++
+        stderr_val = extract_str(tr, "stderr")
+        if (index(tr, "\"interrupted\":true") > 0 || length(stderr_val) > 0) bash_error++
+      } else if (index(tr, "\"structuredPatch\"") > 0) {
+        edit_total++
+        if (index(tr, "\"userModified\":true") > 0) edit_reverted++
+      }
+    }
+  }
+  END {
+    printf "session: %s\n", session_id
+    if (title != "") printf "title:   %s\n", title
+    printf "project: %s\n", project_name
+    if (cwd != "")    printf "cwd:     %s\n", cwd
+    if (branch != "") printf "branch:  %s\n", branch
+    if (first_ts != "") printf "期間:    %s 〜 %s\n", first_ts, last_ts
+    print "---"
+    for (m in turns) {
+      printf "%s: %dturns  input=%d output=%d cache_write=%d cache_read=%d  total=%d\n", \
+        m, turns[m], sum_in[m], sum_out[m], sum_cw[m], sum_cr[m], \
+        sum_in[m]+sum_out[m]+sum_cw[m]+sum_cr[m]
+    }
+    print "---"
+    bash_rate = (bash_total > 0) ? bash_error / bash_total * 100 : 0
+    edit_rate = (edit_total > 0) ? edit_reverted / edit_total * 100 : 0
+    printf "bash: %d件中%d件エラー (%.0f%%)\n", bash_total+0, bash_error+0, bash_rate
+    printf "edit: %d件中%d件手動修正 (%.0f%%)\n", edit_total+0, edit_reverted+0, edit_rate
+  }
+  ' "$transcript_path"
+}
+
 run_report() {
   local days=30
   local project_filter=""
@@ -201,12 +272,17 @@ run_report() {
     return 0
   fi
 
-  local cutoff
   if [ -n "$session_filter" ]; then
-    cutoff="0000-00-00T00:00:00"
-  else
-    cutoff=$(date -u -d "-${days} days" +"%Y-%m-%dT%H:%M:%S")
+    local f
+    for f in "${files[@]}"; do
+      print_session_detail "$f"
+      echo
+    done
+    return 0
   fi
+
+  local cutoff
+  cutoff=$(date -u -d "-${days} days" +"%Y-%m-%dT%H:%M:%S")
 
   local tsv
   tsv=$(awk -v cutoff="$cutoff" "$AWK_COMMON"'
