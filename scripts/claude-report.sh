@@ -79,6 +79,18 @@ print_session_detail() {
   project_name=$(basename "$(dirname "$transcript_path")")
 
   awk -v session_id="$session_id" -v project_name="$project_name" "$AWK_COMMON"'
+  function count_tool_uses(line,    rest, re, m) {
+    rest = line
+    re = "\"type\":\"tool_use\",\"id\":\"[^\"]*\",\"name\":\"[A-Za-z_]*\""
+    while (match(rest, re)) {
+      m = substr(rest, RSTART, RLENGTH)
+      sub(/^.*"name":"/, "", m)
+      sub(/"$/, "", m)
+      tool_counts[m]++
+      tool_total++
+      rest = substr(rest, RSTART + RLENGTH)
+    }
+  }
   {
     if (cwd == "") { cwd = extract_str($0, "cwd") }
     if (branch == "") { branch = extract_str($0, "gitBranch") }
@@ -108,15 +120,39 @@ print_session_detail() {
           sum_cr[model]  += extract_num(usage, "cache_read_input_tokens")
         }
       }
-    } else if (index($0, "\"type\":\"user\"") > 0 && index($0, "\"toolUseResult\":{") > 0) {
-      tr = extract_blob($0, "toolUseResult")
-      if (index(tr, "\"stdout\"") > 0 || index(tr, "\"stderr\"") > 0) {
-        bash_total++
-        stderr_val = extract_str(tr, "stderr")
-        if (index(tr, "\"interrupted\":true") > 0 || length(stderr_val) > 0) bash_error++
-      } else if (index(tr, "\"structuredPatch\"") > 0) {
-        edit_total++
-        if (index(tr, "\"userModified\":true") > 0) edit_reverted++
+      count_tool_uses($0)
+      if (index($0, "\"name\":\"Skill\"") > 0 && match($0, /"skill":"[^"]*"/)) {
+        sname = substr($0, RSTART, RLENGTH)
+        sub(/^"skill":"/, "", sname)
+        sub(/"$/, "", sname)
+        skill_total++
+        skill_counts[sname]++
+        if (last_human_kind == "command") skill_cmd[sname]++
+        else skill_auto[sname]++
+      }
+    } else if (index($0, "\"type\":\"user\"") > 0) {
+      if (index($0, "\"kind\":\"human\"") > 0) {
+        human_turns++
+        if (index($0, "<command-name>") > 0 || match($0, /"text":"\//)) {
+          last_human_kind = "command"
+        } else {
+          last_human_kind = "prompt"
+        }
+      }
+      n_err = gsub(/"is_error":true/, "&", $0)
+      tool_error += n_err
+      if (index($0, "\"toolUseResult\":{") > 0) {
+        tr = extract_blob($0, "toolUseResult")
+        if (index(tr, "\"stdout\"") > 0 || index(tr, "\"stderr\"") > 0) {
+          bash_total++
+          stderr_val = extract_str(tr, "stderr")
+          if (index(tr, "\"interrupted\":true") > 0 || length(stderr_val) > 0) bash_error++
+        } else if (index(tr, "\"structuredPatch\"") > 0) {
+          edit_total++
+          if (index(tr, "\"userModified\":true") > 0) edit_reverted++
+          fp = extract_str(tr, "filePath")
+          if (fp != "") file_edits[fp]++
+        }
       }
     }
   }
@@ -126,7 +162,19 @@ print_session_detail() {
     printf "project: %s\n", project_name
     if (cwd != "")    printf "cwd:     %s\n", cwd
     if (branch != "") printf "branch:  %s\n", branch
-    if (first_ts != "") printf "期間:    %s 〜 %s\n", first_ts, last_ts
+    if (first_ts != "") {
+      printf "期間:    %s 〜 %s", first_ts, last_ts
+      dur_cmd1 = "date -d \"" first_ts "\" +%s 2>/dev/null"
+      dur_cmd1 | getline t1
+      close(dur_cmd1)
+      dur_cmd2 = "date -d \"" last_ts "\" +%s 2>/dev/null"
+      dur_cmd2 | getline t2
+      close(dur_cmd2)
+      dur_s = (t2 + 0) - (t1 + 0)
+      if (dur_s > 0) printf "  (%dh%02dm)", int(dur_s/3600), int(dur_s/60)%60
+      print ""
+    }
+    printf "human turns: %d件\n", human_turns+0
     print "---"
     for (m in turns) {
       printf "%s: %dturns  input=%d output=%d cache_write=%d cache_read=%d  total=%d\n", \
@@ -134,12 +182,32 @@ print_session_detail() {
         sum_in[m]+sum_out[m]+sum_cw[m]+sum_cr[m]
     }
     print "---"
+    printf "tool使用回数 (計%d件):\n", tool_total+0
+    sortcmd = "sort -t\"\t\" -k1,1 -rn"
+    for (t in tool_counts) printf "%d\t  %-30s %d件\n", tool_counts[t], t, tool_counts[t] | sortcmd
+    close(sortcmd)
+    print "---"
     bash_rate = (bash_total > 0) ? bash_error / bash_total * 100 : 0
     edit_rate = (edit_total > 0) ? edit_reverted / edit_total * 100 : 0
+    tool_err_rate = (tool_total > 0) ? tool_error / tool_total * 100 : 0
     printf "bash: %d件中%d件エラー (%.0f%%)\n", bash_total+0, bash_error+0, bash_rate
     printf "edit: %d件中%d件手動修正 (%.0f%%)\n", edit_total+0, edit_reverted+0, edit_rate
+    printf "tool全体: %d件中%d件エラー (%.0f%%)\n", tool_total+0, tool_error+0, tool_err_rate
+    if (edit_total > 0) {
+      print "---"
+      print "編集ファイル:"
+      for (f in file_edits) printf "%d\t  %-70s %d件\n", file_edits[f], f, file_edits[f] | sortcmd
+      close(sortcmd)
+    }
+    if (skill_total > 0) {
+      print "---"
+      printf "Skill参照 (計%d件, command=ユーザーが/コマンドで指定 / auto=AIが判断して呼び出し):\n", skill_total+0
+      for (s in skill_counts) printf "%d\t  %-20s %d件 (command:%d / auto:%d)\n", \
+        skill_counts[s], s, skill_counts[s], skill_cmd[s]+0, skill_auto[s]+0 | sortcmd
+      close(sortcmd)
+    }
   }
-  ' "$transcript_path"
+  ' "$transcript_path" | awk -F'\t' '{ if (NF >= 2) { sub(/^[^\t]*\t/, ""); print } else print }'
 }
 
 run_report() {
