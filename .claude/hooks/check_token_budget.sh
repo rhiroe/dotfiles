@@ -45,22 +45,76 @@ fi
 
 find "$STATE_DIR" -type f -mtime +2 -delete 2>/dev/null || true
 
-RESULT=$(jq -s \
-  --argjson threshold "$THRESHOLD_TOKENS" '
-  ( [ .[]
-      | select(.type == "assistant")
-      | .message.usage as $u
-      | (($u.input_tokens // 0)
-        + ($u.output_tokens // 0)
-        + ($u.cache_creation_input_tokens // 0)
-        + ($u.cache_read_input_tokens // 0))
-    ] | add // 0
-  ) as $total
-  | { total: $total, level: ($total / $threshold | floor) }
-' "$TRANSCRIPT_PATH")
+# transcriptは肥大化し続けるため、毎回全体を読み直すと呼び出しのたびに遅くなる。
+# 前回読み終えたバイト位置(オフセット)と、そこまでの累計トークン数だけを
+# state に保存し、以降は差分(新規に追記された分)だけを jq に渡して加算する。
+OFFSET_FILE="$STATE_DIR/${SESSION_ID}.offset"
+PREV_OFFSET=0
+PREV_TOTAL=0
+if [ -f "$OFFSET_FILE" ]; then
+  IFS=' ' read -r PREV_OFFSET PREV_TOTAL < "$OFFSET_FILE" 2>/dev/null || true
+  case "$PREV_OFFSET" in ''|*[!0-9]*) PREV_OFFSET=0 ;; esac
+  case "$PREV_TOTAL" in ''|*[!0-9]*) PREV_TOTAL=0 ;; esac
+fi
 
-TOTAL=$(echo "$RESULT" | jq -r '.total')
-LEVEL=$(echo "$RESULT" | jq -r '.level')
+FILE_SIZE=$(stat -c%s "$TRANSCRIPT_PATH" 2>/dev/null || stat -f%z "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+
+# transcriptがローテーション/切り詰めされていた場合は最初から数え直す。
+if [ "$PREV_OFFSET" -gt "$FILE_SIZE" ]; then
+  PREV_OFFSET=0
+  PREV_TOTAL=0
+fi
+
+NEW_OFFSET="$PREV_OFFSET"
+TOTAL="$PREV_TOTAL"
+
+if [ "$FILE_SIZE" -gt "$PREV_OFFSET" ]; then
+  TMP_CHUNK="$STATE_DIR/.tmp_chunk_${SESSION_ID}"
+  trap 'rm -f "$TMP_CHUNK" "${TMP_CHUNK}.complete" 2>/dev/null || true' EXIT
+  tail -c "+$((PREV_OFFSET + 1))" "$TRANSCRIPT_PATH" > "$TMP_CHUNK"
+  CHUNK_SIZE=$(stat -c%s "$TMP_CHUNK" 2>/dev/null || stat -f%z "$TMP_CHUNK" 2>/dev/null || echo 0)
+
+  if [ "$CHUNK_SIZE" -gt 0 ]; then
+    COMPLETE_FILE=""
+    CONSUMED_BYTES=0
+    LAST_CHAR=$(tail -c1 "$TMP_CHUNK")
+    if [ -z "$LAST_CHAR" ]; then
+      # 末尾が改行 = 追記分はすべて完全な行
+      CONSUMED_BYTES="$CHUNK_SIZE"
+      COMPLETE_FILE="$TMP_CHUNK"
+    else
+      # 末尾行がまだ書き込み中の可能性があるため、最後の改行までだけを使う
+      LAST_NL_BYTE=$(grep -abo $'\n' "$TMP_CHUNK" | tail -1 | cut -d: -f1)
+      if [ -n "$LAST_NL_BYTE" ]; then
+        CONSUMED_BYTES=$((LAST_NL_BYTE + 1))
+        head -c "$CONSUMED_BYTES" "$TMP_CHUNK" > "${TMP_CHUNK}.complete"
+        COMPLETE_FILE="${TMP_CHUNK}.complete"
+      fi
+    fi
+
+    if [ -n "$COMPLETE_FILE" ] && [ "$CONSUMED_BYTES" -gt 0 ]; then
+      DELTA=$(jq -s '
+        [ .[]
+          | select(.type == "assistant")
+          | .message.usage as $u
+          | (($u.input_tokens // 0)
+            + ($u.output_tokens // 0)
+            + ($u.cache_creation_input_tokens // 0)
+            + ($u.cache_read_input_tokens // 0))
+        ] | add // 0
+      ' "$COMPLETE_FILE")
+      NEW_OFFSET=$((PREV_OFFSET + CONSUMED_BYTES))
+      TOTAL=$((PREV_TOTAL + DELTA))
+    fi
+  fi
+
+  rm -f "$TMP_CHUNK" "${TMP_CHUNK}.complete" 2>/dev/null || true
+  trap - EXIT
+fi
+
+echo "$NEW_OFFSET $TOTAL" > "$OFFSET_FILE"
+
+LEVEL=$((TOTAL / THRESHOLD_TOKENS))
 
 if [ "$LEVEL" -lt 1 ]; then
   exit 0
