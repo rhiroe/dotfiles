@@ -113,6 +113,34 @@ run_single() {
     exit 1
   fi
 
+  local session_id
+  session_id=$(basename "$transcript_path" .jsonl)
+
+  awk "$AWK_COMMON"'
+  {
+    if (cwd == "") { cwd = extract_str($0, "cwd") }
+    if (branch == "") { branch = extract_str($0, "gitBranch") }
+    ts = extract_str($0, "timestamp")
+    if (ts != "") {
+      if (first_ts == "" || ts < first_ts) first_ts = ts
+      if (ts > last_ts) last_ts = ts
+    }
+    if (index($0, "\"type\":\"ai-title\"") > 0) {
+      t = extract_str($0, "aiTitle")
+      if (t != "") title = t
+    }
+  }
+  END {
+    printf "session: %s\n", "'"$session_id"'"
+    if (title != "") printf "title:   %s\n", title
+    printf "path:    %s\n", "'"$transcript_path"'"
+    if (cwd != "")    printf "cwd:     %s\n", cwd
+    if (branch != "") printf "branch:  %s\n", branch
+    if (first_ts != "") printf "期間:    %s 〜 %s\n", first_ts, last_ts
+    print "---"
+  }
+  ' "$transcript_path"
+
   awk "$AWK_COMMON"'
   index($0, "\"type\":\"assistant\"") == 0 { next }
   {
