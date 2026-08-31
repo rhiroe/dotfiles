@@ -27,3 +27,7 @@ IMPORT_LINE="@$HOME/.claude/CLAUDE_IMPORT.md"
 touch ~/.claude/CLAUDE.md
 sed -i.bak '\#^@.*/\.claude/CLAUDE_IMPORT\.md$#d' ~/.claude/CLAUDE.md && rm -f ~/.claude/CLAUDE.md.bak
 grep -qxF "$IMPORT_LINE" ~/.claude/CLAUDE.md || echo "$IMPORT_LINE" >> ~/.claude/CLAUDE.md
+
+mkdir -p ~/.local/bin
+cp "$DOTFILES_DIR/scripts/claude-report.sh" ~/.local/bin/claude-report
+chmod +x ~/.local/bin/claude-report

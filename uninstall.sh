@@ -17,6 +17,7 @@ if [ -f ~/.claude/settings.json ]; then
 fi
 
 rm -f ~/.claude/CLAUDE_IMPORT.md
+rm -f ~/.local/bin/claude-report
 
 IMPORT_LINE="@$HOME/.claude/CLAUDE_IMPORT.md"
 if [ -f ~/CLAUDE.md ]; then

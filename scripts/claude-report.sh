@@ -5,9 +5,9 @@
 # POSIX awk + GNU coreutils(date, find, sort)のみで完結させる。
 #
 # Usage:
-#   claude-report.sh [--days N] [--project SUBSTR]
+#   claude-report [--days N] [--project SUBSTR]
 #                                        # 全セッション横断でトークン量/品質代理指標を一覧表示
-#   claude-report.sh --detail <session_id>
+#   claude-report --detail <session_id>
 #                                        # そのセッションのみ詳細表示(期間制限なし)
 #
 # 品質を直接示すラベルはtranscriptに存在しないため、以下を代理指標として使う:
