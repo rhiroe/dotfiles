@@ -8,8 +8,9 @@
 #   session_cost.sh                     # カレントディレクトリの最新セッションの詳細
 #   session_cost.sh <session_id>        # セッションIDを指定して詳細表示
 #   session_cost.sh <transcript.jsonl>  # transcriptパスを直接指定して詳細表示
-#   session_cost.sh --report [--days N] [--project SUBSTR]
+#   session_cost.sh --report [--days N] [--project SUBSTR] [session_id]
 #                                        # 全セッション横断でトークン量/品質代理指標を一覧表示
+#                                        # session_idを指定するとそのセッションのみ(期間制限なし)
 #
 # 品質を直接示すラベルはtranscriptに存在しないため、以下を代理指標として使う:
 #   - bash_error_rate: Bashツールがエラー/非ゼロ終了で終わった割合
@@ -164,12 +165,21 @@ run_single() {
 run_report() {
   local days=30
   local project_filter=""
+  local session_filter=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
       --days) days="$2"; shift 2 ;;
       --project) project_filter="$2"; shift 2 ;;
-      *) echo "不明なオプション: $1" >&2; exit 1 ;;
+      --*) echo "不明なオプション: $1" >&2; exit 1 ;;
+      *)
+        if [ -n "$session_filter" ]; then
+          echo "不明な引数: $1" >&2
+          exit 1
+        fi
+        session_filter="$1"
+        shift
+        ;;
     esac
   done
 
@@ -183,7 +193,7 @@ run_report() {
     fi
     while IFS= read -r f; do
       files+=("$f")
-    done < <(find "$d" -maxdepth 1 -name "*.jsonl")
+    done < <(find "$d" -maxdepth 1 -name "${session_filter}*.jsonl")
   done
 
   if [ ${#files[@]} -eq 0 ]; then
@@ -192,7 +202,11 @@ run_report() {
   fi
 
   local cutoff
-  cutoff=$(date -u -d "-${days} days" +"%Y-%m-%dT%H:%M:%S")
+  if [ -n "$session_filter" ]; then
+    cutoff="0000-00-00T00:00:00"
+  else
+    cutoff=$(date -u -d "-${days} days" +"%Y-%m-%dT%H:%M:%S")
+  fi
 
   local tsv
   tsv=$(awk -v cutoff="$cutoff" "$AWK_COMMON"'
