@@ -113,35 +113,17 @@ run_single() {
     exit 1
   fi
 
-  local session_id
+  local session_id title
   session_id=$(basename "$transcript_path" .jsonl)
-
-  awk "$AWK_COMMON"'
-  {
-    if (cwd == "") { cwd = extract_str($0, "cwd") }
-    if (branch == "") { branch = extract_str($0, "gitBranch") }
-    ts = extract_str($0, "timestamp")
-    if (ts != "") {
-      if (first_ts == "" || ts < first_ts) first_ts = ts
-      if (ts > last_ts) last_ts = ts
-    }
-    if (index($0, "\"type\":\"ai-title\"") > 0) {
-      t = extract_str($0, "aiTitle")
-      if (t != "") title = t
-    }
+  title=$(awk "$AWK_COMMON"'
+  index($0, "\"type\":\"ai-title\"") > 0 {
+    t = extract_str($0, "aiTitle")
+    if (t != "") title = t
   }
-  END {
-    printf "session: %s\n", "'"$session_id"'"
-    if (title != "") printf "title:   %s\n", title
-    printf "path:    %s\n", "'"$transcript_path"'"
-    if (cwd != "")    printf "cwd:     %s\n", cwd
-    if (branch != "") printf "branch:  %s\n", branch
-    if (first_ts != "") printf "期間:    %s 〜 %s\n", first_ts, last_ts
-    print "---"
-  }
-  ' "$transcript_path"
+  END { print title }
+  ' "$transcript_path")
 
-  awk "$AWK_COMMON"'
+  awk -v prefix="$session_id $title" "$AWK_COMMON"'
   index($0, "\"type\":\"assistant\"") == 0 { next }
   {
     model = ""
@@ -169,14 +151,12 @@ run_single() {
     seen = 1
   }
   END {
-    if (!seen) { print "assistantターンが見つかりませんでした。"; exit 0 }
+    if (!seen) { print prefix " assistantターンが見つかりませんでした。"; exit 0 }
     for (m in turns) {
-      printf "%s: %dturns  input=%d output=%d cache_write=%d cache_read=%d  total=%d\n", \
-        m, turns[m], sum_in[m], sum_out[m], sum_cw[m], sum_cr[m], \
+      printf "%s %s: %dturns  input=%d output=%d cache_write=%d cache_read=%d  total=%d\n", \
+        prefix, m, turns[m], sum_in[m], sum_out[m], sum_cw[m], sum_cr[m], \
         sum_in[m]+sum_out[m]+sum_cw[m]+sum_cr[m]
     }
-    printf "---\n合計: input=%d output=%d cache_write=%d cache_read=%d  total=%d\n", \
-      total_in, total_out, total_cw, total_cr, total_in+total_out+total_cw+total_cr
   }
   ' "$transcript_path"
 }
