@@ -7,8 +7,8 @@
 # Usage:
 #   session_cost.sh [--days N] [--project SUBSTR]
 #                                        # 全セッション横断でトークン量/品質代理指標を一覧表示
-#   session_cost.sh <session_id>        # そのセッションのみ詳細表示(期間制限なし)
-#   (先頭に --report を付けても同じ。過去との互換のため受け付ける)
+#   session_cost.sh --detail <session_id>
+#                                        # そのセッションのみ詳細表示(期間制限なし)
 #
 # 品質を直接示すラベルはtranscriptに存在しないため、以下を代理指標として使う:
 #   - bash_error_rate: Bashツールがエラー/非ゼロ終了で終わった割合
@@ -151,15 +151,8 @@ run_report() {
     case "$1" in
       --days) days="$2"; shift 2 ;;
       --project) project_filter="$2"; shift 2 ;;
-      --*) echo "不明なオプション: $1" >&2; exit 1 ;;
-      *)
-        if [ -n "$session_filter" ]; then
-          echo "不明な引数: $1" >&2
-          exit 1
-        fi
-        session_filter="$1"
-        shift
-        ;;
+      --detail) session_filter="$2"; shift 2 ;;
+      *) echo "不明なオプション: $1" >&2; exit 1 ;;
     esac
   done
 
@@ -286,7 +279,4 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
   exit 0
 fi
 
-if [ "${1:-}" = "--report" ]; then
-  shift
-fi
 run_report "$@"
