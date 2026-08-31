@@ -78,7 +78,7 @@ print_session_detail() {
   session_id=$(basename "$transcript_path" .jsonl)
   project_name=$(basename "$(dirname "$transcript_path")")
 
-  awk -v session_id="$session_id" -v project_name="$project_name" "$AWK_COMMON"'
+  awk -v session_id="$session_id" -v project_name="$project_name" -v transcript_path="$transcript_path" "$AWK_COMMON"'
   function count_tool_uses(line,    rest, re, m) {
     rest = line
     re = "\"type\":\"tool_use\",\"id\":\"[^\"]*\",\"name\":\"[A-Za-z_]*\""
@@ -160,6 +160,7 @@ print_session_detail() {
     printf "session: %s\n", session_id
     if (title != "") printf "title:   %s\n", title
     printf "project: %s\n", project_name
+    printf "file:    %s\n", transcript_path
     if (cwd != "")    printf "cwd:     %s\n", cwd
     if (branch != "") printf "branch:  %s\n", branch
     if (first_ts != "") {
