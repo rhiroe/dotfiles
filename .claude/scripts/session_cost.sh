@@ -259,31 +259,27 @@ run_report() {
   fi
 
   local header
-  header=$(printf '%-10s%-24s%6s%10s%10s%12s%11s%10s%9s%9s%9s%7s' \
-    "session" "project" "turns" "input" "output" "cache_write" "cache_read" "total" "bash_err" "edit_rev" "quality" "min")
+  header=$(printf '%-10s%-24s%6s%10s%10s%12s%11s%10s%9s%9s%7s' \
+    "session" "project" "turns" "input" "output" "cache_write" "cache_read" "total" "bash_err" "edit_rev" "min")
   echo "$header"
   printf '%s\n' "$header" | awk '{ for (i=0;i<length($0);i++) printf "-"; print "" }'
 
   local sid project_name turns in_tok out_tok cw_tok cr_tok total bash_total bash_error edit_total edit_reverted first_ts last_ts
   while IFS=$'\t' read -r sid project_name turns in_tok out_tok cw_tok cr_tok total bash_total bash_error edit_total edit_reverted first_ts last_ts; do
-    local bash_error_rate edit_revert_rate quality duration_min duration_s
+    local bash_error_rate edit_revert_rate duration_min duration_s
     bash_error_rate=$(awk -v a="$bash_error" -v b="$bash_total" 'BEGIN { printf "%.6f", (b>0)? a/b : 0 }')
     edit_revert_rate=$(awk -v a="$edit_reverted" -v b="$edit_total" 'BEGIN { printf "%.6f", (b>0)? a/b : 0 }')
-    quality=$(awk -v e="$bash_error_rate" -v r="$edit_revert_rate" 'BEGIN { printf "%.6f", 1 - 0.5*e - 0.5*r }')
     duration_min="n/a"
     if [ -n "$first_ts" ] && [ -n "$last_ts" ]; then
       duration_s=$(( $(date -d "$last_ts" +%s 2>/dev/null || echo 0) - $(date -d "$first_ts" +%s 2>/dev/null || echo 0) ))
       duration_min=$(awk -v s="$duration_s" 'BEGIN { printf "%.0f", s/60 }')
     fi
-    printf '%s\t%-10s%-24s%6d%10d%10d%12d%11d%10d%8.0f%%%8.0f%%%9.2f%7s\n' \
+    printf '%s\t%-10s%-24s%6d%10d%10d%12d%11d%10d%8.0f%%%8.0f%%%7s\n' \
       "$total" "${sid:0:8}" "${project_name:0:23}" "$turns" "$in_tok" "$out_tok" "$cw_tok" "$cr_tok" "$total" \
       "$(awk -v r="$bash_error_rate" 'BEGIN{print r*100}')" \
       "$(awk -v r="$edit_revert_rate" 'BEGIN{print r*100}')" \
-      "$quality" "$duration_min"
+      "$duration_min"
   done <<< "$tsv" | sort -t$'\t' -k1,1 -rn | cut -f2-
-
-  echo
-  echo "quality = 1 - 0.5*bash_error_rate - 0.5*edit_revert_rate (品質の代理指標。タスクの難易度や成果の価値は反映していないため、絶対値ではなく同一ユーザー内での相対比較用)"
 }
 
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
