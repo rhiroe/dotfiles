@@ -1,17 +1,3 @@
 {
-  "model": "sonnet",
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/check_token_budget.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
+  "model": "sonnet"
 }
