@@ -5,13 +5,10 @@
 # POSIX awk + GNU coreutils(date, find, sort)のみで完結させる。
 #
 # Usage:
-#   session_cost.sh                     # カレントディレクトリの最新セッションの詳細
-#   session_cost.sh <session_id>        # セッションIDを指定して詳細表示
-#   session_cost.sh <transcript.jsonl>  # transcriptパスを直接指定して詳細表示
-#   session_cost.sh --report [--days N] [--project SUBSTR]
+#   session_cost.sh [--days N] [--project SUBSTR]
 #                                        # 全セッション横断でトークン量/品質代理指標を一覧表示
-#   session_cost.sh --report <session_id>
-#                                        # そのセッションのみ詳細表示(期間制限なし)
+#   session_cost.sh <session_id>        # そのセッションのみ詳細表示(期間制限なし)
+#   (先頭に --report を付けても同じ。過去との互換のため受け付ける)
 #
 # 品質を直接示すラベルはtranscriptに存在しないため、以下を代理指標として使う:
 #   - bash_error_rate: Bashツールがエラー/非ゼロ終了で終わった割合
@@ -72,95 +69,7 @@ function cache_write_tokens(usage,    cc_flat, w5, w1) {
 '
 
 usage() {
-  sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
-}
-
-resolve_transcript() {
-  local arg="${1:-}"
-
-  if [ -n "$arg" ] && [ -f "$arg" ]; then
-    echo "$arg"
-    return 0
-  fi
-
-  local project_dir
-  project_dir="$PROJECTS_DIR/$(pwd | tr '/.' '-')"
-
-  if [ -n "$arg" ]; then
-    local match
-    match=$(find "$project_dir" -maxdepth 1 -name "${arg}*.jsonl" 2>/dev/null | head -1)
-    if [ -z "$match" ]; then
-      echo "セッションが見つかりません: $arg" >&2
-      exit 1
-    fi
-    echo "$match"
-    return 0
-  fi
-
-  if [ ! -d "$project_dir" ]; then
-    echo "このディレクトリのセッション履歴が見つかりません: $project_dir" >&2
-    exit 1
-  fi
-
-  find "$project_dir" -maxdepth 1 -name "*.jsonl" -printf '%T@ %p\n' 2>/dev/null \
-    | sort -rn | head -1 | cut -d' ' -f2-
-}
-
-run_single() {
-  local transcript_path
-  transcript_path=$(resolve_transcript "${1:-}")
-
-  if [ -z "$transcript_path" ] || [ ! -f "$transcript_path" ]; then
-    echo "transcriptが見つかりません" >&2
-    exit 1
-  fi
-
-  local session_id title
-  session_id=$(basename "$transcript_path" .jsonl)
-  title=$(awk "$AWK_COMMON"'
-  index($0, "\"type\":\"ai-title\"") > 0 {
-    t = extract_str($0, "aiTitle")
-    if (t != "") title = t
-  }
-  END { print title }
-  ' "$transcript_path")
-
-  awk -v prefix="$session_id $title" "$AWK_COMMON"'
-  index($0, "\"type\":\"assistant\"") == 0 { next }
-  {
-    model = ""
-    if (match($0, /"model":"[^"]*"/)) {
-      model = substr($0, RSTART, RLENGTH)
-      sub(/^"model":"/, "", model)
-      sub(/"$/, "", model)
-    }
-    if (model == "") next
-
-    usage = extract_blob($0, "usage")
-    if (usage == "") next
-
-    in_tok  = extract_num(usage, "input_tokens")
-    out_tok = extract_num(usage, "output_tokens")
-    cw_tok  = cache_write_tokens(usage)
-    cr_tok  = extract_num(usage, "cache_read_input_tokens")
-
-    turns[model]++
-    sum_in[model]  += in_tok
-    sum_out[model] += out_tok
-    sum_cw[model]  += cw_tok
-    sum_cr[model]  += cr_tok
-    total_in += in_tok; total_out += out_tok; total_cw += cw_tok; total_cr += cr_tok
-    seen = 1
-  }
-  END {
-    if (!seen) { print prefix " assistantターンが見つかりませんでした。"; exit 0 }
-    for (m in turns) {
-      printf "%s %s: %dturns  input=%d output=%d cache_write=%d cache_read=%d  total=%d\n", \
-        prefix, m, turns[m], sum_in[m], sum_out[m], sum_cw[m], sum_cr[m], \
-        sum_in[m]+sum_out[m]+sum_cw[m]+sum_cr[m]
-    }
-  }
-  ' "$transcript_path"
+  sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 print_session_detail() {
@@ -379,7 +288,5 @@ fi
 
 if [ "${1:-}" = "--report" ]; then
   shift
-  run_report "$@"
-else
-  run_single "${1:-}"
 fi
+run_report "$@"
