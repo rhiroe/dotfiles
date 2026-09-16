@@ -2,7 +2,8 @@
 # ~/.claude/projects/**/*.jsonl のtranscriptから、セッションのトークン使用量を集計する。
 # 金額には変換しない(単価は変更されうる不確実な情報のため、usageに記録された
 # トークン数そのものだけを正として扱う)。jq/python3に依存せず、
-# POSIX awk + GNU coreutils(date, find, sort)のみで完結させる。
+# POSIX awk + coreutils(date, find, sort)のみで完結させる。
+# dateはGNU/BSD(macOS)両対応で実装している。
 #
 # Usage:
 #   claude-report [--days N] [--project SUBSTR]
@@ -17,9 +18,26 @@
 # タスク自体の難易度や価値は反映しない。絶対値ではなく同一ユーザー内での相対比較・
 # 時系列トレンド用途に限定して使うこと。stderrの中身は正規表現 "stderr":"[^"]*" で
 # 抜くため、エスケープされたダブルクォートを含む場合は途中で切れて誤判定しうる。
+# dateはGNU/BSD(macOS)両対応: GNU構文を先に試し、失敗したらBSD構文にフォールバックする。
 set -euo pipefail
 
 PROJECTS_DIR="$HOME/.claude/projects"
+
+# GNU: date -u -d "-N days" / BSD: date -u -v-Nd
+portable_days_ago() {
+  local days="$1"
+  date -u -d "-${days} days" +"%Y-%m-%dT%H:%M:%S" 2>/dev/null && return
+  date -u -v-"${days}"d +"%Y-%m-%dT%H:%M:%S" 2>/dev/null
+}
+
+# ISO8601タイムスタンプ(小数秒/Z付き可)をepoch秒に変換する。
+# GNU: date -d はそのまま解釈できる / BSD: date -j -f で秒未満を落として解釈する。
+epoch_from_iso() {
+  local ts="$1" clean="${1%%.*}"
+  clean="${clean%Z}"
+  date -u -d "$clean" +%s 2>/dev/null && return
+  date -j -u -f "%Y-%m-%dT%H:%M:%S" "$clean" +%s 2>/dev/null || echo 0
+}
 
 # --- 共通: usage/toolUseResultのようなネストしたJSONオブジェクトを波括弧の対応を
 # 数えて切り出すためのawk関数群。JSONパーサではなく、transcriptが1レコード1行の
@@ -58,6 +76,15 @@ function extract_blob(line, key,    start, rest, depth, i, c) {
     }
   }
   return ""
+}
+function to_epoch(ts,    clean, cmd, epoch) {
+  clean = ts
+  sub(/\.[0-9]+Z?$/, "", clean)
+  sub(/Z$/, "", clean)
+  cmd = "date -u -d \"" clean "\" +%s 2>/dev/null || date -j -u -f \"%Y-%m-%dT%H:%M:%S\" \"" clean "\" +%s 2>/dev/null"
+  cmd | getline epoch
+  close(cmd)
+  return epoch + 0
 }
 function cache_write_tokens(usage,    cc_flat, w5, w1) {
   cc_flat = extract_num(usage, "cache_creation_input_tokens")
@@ -165,12 +192,8 @@ print_session_detail() {
     if (branch != "") printf "branch:  %s\n", branch
     if (first_ts != "") {
       printf "期間:    %s 〜 %s", first_ts, last_ts
-      dur_cmd1 = "date -d \"" first_ts "\" +%s 2>/dev/null"
-      dur_cmd1 | getline t1
-      close(dur_cmd1)
-      dur_cmd2 = "date -d \"" last_ts "\" +%s 2>/dev/null"
-      dur_cmd2 | getline t2
-      close(dur_cmd2)
+      t1 = to_epoch(first_ts)
+      t2 = to_epoch(last_ts)
       dur_s = (t2 + 0) - (t1 + 0)
       if (dur_s > 0) printf "  (%dh%02dm)", int(dur_s/3600), int(dur_s/60)%60
       print ""
@@ -253,7 +276,7 @@ run_report() {
   fi
 
   local cutoff
-  cutoff=$(date -u -d "-${days} days" +"%Y-%m-%dT%H:%M:%S")
+  cutoff=$(portable_days_ago "$days")
 
   local tsv
   tsv=$(awk -v cutoff="$cutoff" "$AWK_COMMON"'
@@ -332,7 +355,7 @@ run_report() {
     edit_revert_rate=$(awk -v a="$edit_reverted" -v b="$edit_total" 'BEGIN { printf "%.6f", (b>0)? a/b : 0 }')
     duration_min="n/a"
     if [ -n "$first_ts" ] && [ -n "$last_ts" ]; then
-      duration_s=$(( $(date -d "$last_ts" +%s 2>/dev/null || echo 0) - $(date -d "$first_ts" +%s 2>/dev/null || echo 0) ))
+      duration_s=$(( $(epoch_from_iso "$last_ts") - $(epoch_from_iso "$first_ts") ))
       duration_min=$(awk -v s="$duration_s" 'BEGIN { printf "%.0f", s/60 }')
     fi
     printf '%s\t%-10s%-24s%6d%10d%10d%12d%11d%10d%8.0f%%%8.0f%%%7s\n' \
